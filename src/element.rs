@@ -7,12 +7,16 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
+use serde::ser::SerializeMap;
+use serde::Serialize;
+
 use crate::element_builder::{BuilderError, ElementBuilder};
 use crate::parser::Parser;
 use crate::{escape, AttrMap, Xml};
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fmt;
+use std::hash::Hash;
 use std::iter::IntoIterator;
 use std::slice;
 use std::str::FromStr;
@@ -32,6 +36,79 @@ pub struct Element {
     pub(crate) prefixes: HashMap<String, String>,
     /// The element's default namespace
     pub(crate) default_ns: Option<String>,
+}
+
+/// to handle repeated entries
+pub fn map_collect<K: Hash + Eq, V>(map: &mut HashMap<K, Vec<V>>, k: K, val: V) {
+    if let Some(e) = map.get_mut(&k) {
+        e.push(val);
+    } else {
+        map.insert(k, [val].into());
+    }
+}
+
+// All entries are handled like key:[val]
+// Elasticsearch style
+impl Serialize for Element {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        /*
+           element.name: {
+               ..atttrs,
+               ..children
+           }
+        */
+        if self.attributes.len() == 0 && self.children.len() == 0 {
+            return serializer.serialize_unit();
+        }
+        let attr_num = self.attributes.len() + self.children.len();
+
+        let mut elements = HashMap::new();
+        let mut comments = Vec::new();
+        let mut texts = Vec::new();
+        for kid in &self.children {
+            match kid {
+                Xml::ElementNode(el) => map_collect(&mut elements, el.name.clone(), el),
+                Xml::CommentNode(c) => comments.push(c),
+                Xml::CharacterNode(text) => {
+                    let t = text.trim();
+                    if !t.is_empty() {
+                        texts.push(t)
+                    }
+                }
+                _ => continue, // unsound, too lazy
+            };
+        }
+        if elements.len() == 0 && comments.len() == 0 && self.attributes.len() == 0 {
+            if texts.len() == 1 {
+                serializer.serialize_str(&texts[0])
+            } else {
+                texts.serialize(serializer)
+            }
+        } else {
+            let mut mapper = serializer.serialize_map(Some(attr_num))?;
+            for ((key, _no_idea), val) in &self.attributes {
+                mapper.serialize_entry(&key, &val)?;
+            }
+
+            for (key, vec) in elements {
+                mapper.serialize_entry(&key, &vec)?;
+            }
+            match comments.len() {
+                0 => (),
+                1 => mapper.serialize_entry("_comment", &comments[0])?,
+                _ => mapper.serialize_entry("_comment", &comments)?,
+            };
+            match texts.len() {
+                0 => (),
+                1 => mapper.serialize_entry("_body", &texts[0])?,
+                _ => mapper.serialize_entry("_body", &texts)?,
+            };
+            mapper.end()
+        }
+    }
 }
 
 fn fmt_elem(

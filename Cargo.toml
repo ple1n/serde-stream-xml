@@ -16,7 +16,12 @@ name = "xml"
 
 [dependencies]
 indexmap = { version = "1.7.0", optional = true }
+serde = { version = "1.0.200", features = ["derive"] }
 
 [features]
 ordered_attrs = ["indexmap"]
 bench = []
+
+[dev-dependencies]
+anyhow = "1.0.83"
+serde_json = "1.0.116"

@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<drug>
+	<cas-num>4646-2233</cas-num>
+	<indication>osteoporosis
+		<contraindiction>
+			liver function
+		</contraindiction>
+	</indication>
+	<indication>oooo</indication>
+	footer
+</drug>
+<drug name="alpraprazole">
+	no
+</drug>
