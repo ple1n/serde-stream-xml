@@ -1,7 +1,6 @@
-RustyXML
-========
+## Forked from RustyXML
 
-[![Build Status](https://travis-ci.org/Florob/RustyXML.svg?branch=master)](https://travis-ci.org/Florob/RustyXML)
+Stream from an XML file as serde-Serialize-able objects. You can map XML to JSON with this. 
 
 [Documentation](https://docs.babelmonkeys.de/RustyXML/xml)
 
