@@ -7,11 +7,12 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
+use serde::de::{IgnoredAny, Visitor};
 use serde::ser::SerializeMap;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use crate::element_builder::{BuilderError, ElementBuilder};
-use crate::parser::Parser;
+use crate::parser::{Parser, Pos};
 use crate::{escape, AttrMap, Xml};
 
 use std::collections::{HashMap, HashSet};
@@ -44,6 +45,17 @@ pub fn map_collect<K: Hash + Eq, V>(map: &mut HashMap<K, Vec<V>>, k: K, val: V) 
         e.push(val);
     } else {
         map.insert(k, [val].into());
+    }
+}
+
+impl<'de> Deserialize<'de> for Element {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        deserializer
+            .deserialize_ignored_any(IgnoredAny)
+            .map(|x| Element::new("todo".to_owned(), None, vec![]))
     }
 }
 
@@ -94,7 +106,11 @@ impl Serialize for Element {
             }
 
             for (key, vec) in elements {
-                mapper.serialize_entry(&key, &vec)?;
+                match vec.len() {
+                    0 => (),
+                    1 => mapper.serialize_entry(&key, &vec[0])?,
+                    _ => mapper.serialize_entry(&key, &vec)?,
+                };
             }
             match comments.len() {
                 0 => (),
@@ -344,11 +360,14 @@ impl FromStr for Element {
     type Err = BuilderError;
     #[inline]
     fn from_str(data: &str) -> Result<Element, BuilderError> {
+        todo!();
+
         let mut p = Parser::new();
         let mut e = ElementBuilder::new();
 
         p.feed_str(data);
-        p.find_map(|x| e.handle_event(x))
+        // TODO: Panics
+        p.find_map(|x| e.handle_event(x.unwrap().0))
             .unwrap_or(Err(BuilderError::NoElement))
     }
 }

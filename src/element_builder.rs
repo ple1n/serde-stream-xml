@@ -102,14 +102,7 @@ impl ElementBuilder {
     /// While no root element has been finished `None` is returned.
     /// Once sufficient data has been received an `Element` is returned as `Some(Ok(elem))`.
     /// Upon Error `Some(Err("message"))` is returned.
-    pub fn handle_event(
-        &mut self,
-        e: Result<Event, ParserError>,
-    ) -> Option<Result<Element, BuilderError>> {
-        let e = match e {
-            Ok(o) => o,
-            Err(e) => return Some(Err(From::from(e))),
-        };
+    pub fn handle_event(&mut self, e: Event) -> Option<Result<Element, BuilderError>> {
         match e {
             Event::PI(cont) => {
                 if let Some(elem) = self.stack.last_mut() {

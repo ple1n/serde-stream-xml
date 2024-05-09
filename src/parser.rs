@@ -102,6 +102,7 @@ impl fmt::Display for ParserErrorKind {
     }
 }
 
+#[derive(Debug)]
 // Event based parser
 enum State {
     OutsideTag,
@@ -143,9 +144,12 @@ enum State {
 /// }
 /// ~~~
 pub struct Parser {
-    line: u32,
-    col: u32,
-    has_error: bool,
+    pub line: u32,
+    pub col: u32,
+    /// Represents the exact text len for all the events that have been produced
+    pub done_char: u64,
+    pub done_utf8: u64,
+    pub has_error: bool,
     data: VecDeque<char>,
     buf: String,
     namespaces: Vec<HashMap<String, String>>,
@@ -174,6 +178,8 @@ impl Parser {
         Parser {
             line: 1,
             col: 0,
+            done_char: 0,
+            done_utf8: 0,
             has_error: false,
             data: VecDeque::with_capacity(4096),
             buf: String::new(),
@@ -193,10 +199,16 @@ impl Parser {
     }
 }
 
-impl Iterator for Parser {
-    type Item = Result<Event, ParserError>;
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Pos {
+    pub done_utf8: u64,
+    pub done_char: u64,
+}
 
-    fn next(&mut self) -> Option<Result<Event, ParserError>> {
+impl Iterator for Parser {
+    type Item = Result<(Event, Pos), ParserError>;
+    /// Even and number of chars
+    fn next(&mut self) -> Option<Result<(Event, Pos), ParserError>> {
         if self.has_error {
             return None;
         }
@@ -206,6 +218,8 @@ impl Iterator for Parser {
                 Some(c) => c,
                 None => return None,
             };
+            self.done_char += 1;
+            self.done_utf8 += c.len_utf8() as u64;
 
             if c == '\n' {
                 self.line += 1;
@@ -217,7 +231,13 @@ impl Iterator for Parser {
             match self.parse_character(c) {
                 Ok(None) => continue,
                 Ok(Some(event)) => {
-                    return Some(Ok(event));
+                    return Some(Ok((
+                        event,
+                        Pos {
+                            done_char: self.done_char,
+                            done_utf8: self.done_utf8,
+                        },
+                    )));
                 }
                 Err(e) => {
                     self.has_error = true;
@@ -277,7 +297,6 @@ impl Parser {
     }
 
     fn parse_character(&mut self, c: char) -> Result<Option<Event>, ParserError> {
-        // println(fmt!("Now in state: %?", self.st));
         match self.st {
             State::OutsideTag => self.outside_tag(c),
             State::TagOpened => self.tag_opened(c),
