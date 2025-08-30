@@ -25,3 +25,4 @@ bench = []
 [dev-dependencies]
 anyhow = "1.0.83"
 serde_json = "1.0.116"
+serde_test = "1.0.177"
