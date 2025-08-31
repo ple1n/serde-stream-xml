@@ -7,6 +7,8 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
+use tracing::{info, trace};
+
 use crate::parser::ParserError;
 use crate::{Element, EndTag, Event, StartTag, Xml};
 use std::collections::HashMap;
@@ -165,7 +167,9 @@ impl ElementBuilder {
                 } else {
                     match self.stack.last_mut() {
                         Some(e) => e.children.push(Xml::ElementNode(elem)),
-                        None => return Some(Ok(elem)),
+                        None => {
+                            return Some(Ok(elem))
+                        },
                     }
                 }
             }

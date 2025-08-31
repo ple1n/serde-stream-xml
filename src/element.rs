@@ -21,6 +21,7 @@ use std::hash::Hash;
 use std::iter::IntoIterator;
 use std::slice;
 use std::str::FromStr;
+use tracing::info;
 
 #[derive(Clone, PartialEq, Debug)]
 /// A struct representing an XML element
@@ -66,11 +67,19 @@ pub fn type_guess<S: serde::Serializer>(
     map: &mut S::SerializeMap,
 ) -> Result<(), S::Error> {
     // Try parsing as f32, for examples like "0", "0.1", ".0"
+    if let Ok(value) = val.parse::<bool>() {
+        map.serialize_entry(key, &value)?;
+        return Ok(());
+    }
+    if let Ok(value) = val.parse::<u64>() {
+        map.serialize_entry(key, &value)?;
+        return Ok(());
+    }
     if let Ok(value) = val.parse::<f32>() {
         map.serialize_entry(key, &value)?;
         return Ok(());
     }
-    
+
     // Try parsing as two fields, for input like "200 MG" "200 mg" "100 mg/1" "20 MG/ML"
     let parts: Vec<&str> = val.split_whitespace().collect();
     if parts.len() == 2 {
@@ -80,9 +89,24 @@ pub fn type_guess<S: serde::Serializer>(
             map.serialize_entry(&format!("{}_unit", key), &denom)?;
             return Ok(());
         }
+    } else {
+        info!("parts {:?}", &parts);
     }
-    
+    info!("{}, {}", key, val);
     map.serialize_entry(key, val)
+}
+
+pub fn type_guess_val<S: serde::Serializer>(val: &str, s: S) -> Result<S::Ok, S::Error> {
+    // Try parsing as f32, for examples like "0", "0.1", ".0"
+    if let Ok(value) = val.parse::<u64>() {
+        s.serialize_u64(value)
+    } else if let Ok(value) = val.parse::<bool>() {
+        s.serialize_bool(value)
+    } else if let Ok(value) = val.parse::<f32>() {
+        s.serialize_f32(value)
+    } else {
+        s.serialize_str(val)
+    }
 }
 
 // All entries are handled like key:[val]
@@ -98,6 +122,7 @@ impl Serialize for Element {
                ..children
            }
         */
+
         if self.attributes.len() == 0 && self.children.len() == 0 {
             return serializer.serialize_unit();
         }
@@ -121,14 +146,14 @@ impl Serialize for Element {
         }
         if elements.len() == 0 && comments.len() == 0 && self.attributes.len() == 0 {
             if texts.len() == 1 {
-                serializer.serialize_str(&texts[0])
+                type_guess_val(&texts[0], serializer)
             } else {
                 texts.serialize(serializer)
             }
         } else {
             let mut mapper = serializer.serialize_map(Some(attr_num))?;
             for ((key, _no_idea), val) in &self.attributes {
-                mapper.serialize_entry(&key, &val)?;
+                type_guess::<S>(&key, &val, &mut mapper)?;
             }
 
             for (key, vec) in elements {
@@ -472,9 +497,9 @@ mod tests {
     fn test_type_guess_number() {
         let mut result = HashMap::new();
         let mut map = serde_test::MapSerializer::new(&mut result);
-        
+
         super::type_guess("dose", "42.5", &mut map).unwrap();
-        
+
         assert_eq!(result.get("dose"), Some(&serde_test::Token::F32(42.5)));
         assert_eq!(result.len(), 1);
     }
@@ -483,9 +508,9 @@ mod tests {
     fn test_type_guess_number_unit() {
         let mut result = HashMap::new();
         let mut map = serde_test::MapSerializer::new(&mut result);
-        
+
         super::type_guess("dose", "200 MG", &mut map).unwrap();
-        
+
         assert_eq!(result.get("dose"), Some(&serde_test::Token::F32(200.0)));
         assert_eq!(result.get("dose_unit"), Some(&serde_test::Token::Str("mg")));
         assert_eq!(result.len(), 2);
@@ -495,9 +520,9 @@ mod tests {
     fn test_type_guess_string_fallback() {
         let mut result = HashMap::new();
         let mut map = serde_test::MapSerializer::new(&mut result);
-        
+
         super::type_guess("name", "Aspirin", &mut map).unwrap();
-        
+
         assert_eq!(result.get("name"), Some(&serde_test::Token::Str("Aspirin")));
         assert_eq!(result.len(), 1);
     }
@@ -506,9 +531,9 @@ mod tests {
     fn test_type_guess_mixed_case_unit() {
         let mut result = HashMap::new();
         let mut map = serde_test::MapSerializer::new(&mut result);
-        
+
         super::type_guess("dose", "100 Mg", &mut map).unwrap();
-        
+
         assert_eq!(result.get("dose"), Some(&serde_test::Token::F32(100.0)));
         assert_eq!(result.get("dose_unit"), Some(&serde_test::Token::Str("mg")));
         assert_eq!(result.len(), 2);
@@ -518,9 +543,9 @@ mod tests {
     fn test_type_guess_invalid_number_unit() {
         let mut result = HashMap::new();
         let mut map = serde_test::MapSerializer::new(&mut result);
-        
+
         super::type_guess("dose", "abc MG", &mut map).unwrap();
-        
+
         assert_eq!(result.get("dose"), Some(&serde_test::Token::Str("abc MG")));
         assert_eq!(result.len(), 1);
     }

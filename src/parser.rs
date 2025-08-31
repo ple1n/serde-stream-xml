@@ -11,6 +11,8 @@
 // ObjFW, Copyright (c) 2008-2013 Jonathan Schleifer.
 // Permission to license this derived work under MIT license has been granted by ObjFW's author.
 
+use tracing::info;
+
 use crate::{unescape, AttrMap, EndTag, StartTag};
 use std::collections::{HashMap, VecDeque};
 use std::error::Error;
@@ -210,6 +212,7 @@ impl Iterator for Parser {
     /// Even and number of chars
     fn next(&mut self) -> Option<Result<(Event, Pos), ParserError>> {
         if self.has_error {
+            info!("xml has error");
             return None;
         }
 
